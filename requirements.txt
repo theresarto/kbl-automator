@@ -1,0 +1,25 @@
+# Core data processing
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0  # For Excel file handling
+
+# Web automation
+selenium>=4.10.0
+webdriver-manager>=4.0.0  # Automatically manages chromedriver
+
+# Data parsing
+lxml>=4.9.0
+beautifulsoup4>=4.12.0
+
+# Development tools
+python-dotenv>=1.0.0  # For environment variables
+pytest>=7.4.0  # For testing
+black>=23.0.0  # Code formatting
+flake8>=6.0.0  # Linting
+
+# Logging and debugging
+colorlog>=6.7.0  # Coloured log output
+
+# Optional but useful
+requests>=2.31.0  # For API calls if needed
+tqdm>=4.65.0  # Progress bars
