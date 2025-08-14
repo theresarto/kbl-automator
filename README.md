@@ -1,1 +1,1 @@
-# eBay to CMS Automation
+# sales to CMS Automation
