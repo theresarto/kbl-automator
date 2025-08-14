@@ -1,0 +1,112 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Sensitive Data - IMPORTANT
+config/config.json
+config/credentials.json
+config/*_credentials.*
+*.env
+.env.*
+
+# Business Data - Contains pricing and customer info
+data/input/*_orders_*.csv
+data/input/eBay*.csv
+data/input/Amazon*.csv
+data/processed/*.xlsx
+data/processed/*.csv
+data/reports/*.xlsx
+data/reports/*.csv
+Chi_Ebay_*.xlsx
+*_accounting_*.xlsx
+
+# CMS Login Credentials
+config/*
+config/cms_config.json
+config/ebay_api_keys.json
+config/amazon_api_keys.json
+config/cms_config.json
+config/*_auth.json
+
+# Personal/Business Information
+customer_data/
+invoices/
+receipts/
+*/customer_*
+*/buyer_*
+
+# Keep folder structure but not contents
+data/input/*
+!data/input/.gitkeep
+!data/input/cms_product_catalogue.csv  # This could be public
+!data/input/SAMPLE_*.csv               # Sample files for testing
+
+data/processed/*
+!data/processed/.gitkeep
+
+data/reports/*
+!data/reports/.gitkeep
+
+# Logs that might contain sensitive info
+logs/*.log
+logs/*.txt
+!logs/.gitkeep
+
+# Backup files
+*.bak
+*.backup
+*_backup.*
+backups/
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+.~*
+
+# Excel temporary files
+~$*.xlsx
+~$*.xls
+
+# CSV files with specific patterns (adjust as needed)
+*_sales_*.csv
+*_orders_*.csv
+*_customers_*.csv
+*_private_*.csv
+
+# Allow example/template files
+!templates/*.csv
+!examples/*.csv
+!config/postage_costs_template.csv
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+.env
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
