@@ -85,7 +85,7 @@ class ProductCatalogueManager:
                 
         return patterns
     
-    def extract_keywords(self, text: str) -> str:
+    def extract_keywords(self, text: str) -> list:
         """Extract important keywords from product name"""
         # Remove common words
         stop_words = {
@@ -98,82 +98,66 @@ class ProductCatalogueManager:
         keywords = [w for w in words if len(w) > 2 and w not in stop_words]
         
         return keywords
-    
-    
-    # def match_ebay_title(self, ebay_title: str, threshold: float = 0.7) -> list:
-    #     """
-    #     Match eBay title to CMS products
-    #     Returns list of matches with confidence scores
-    #     """
-    #     ebay_clean = self.clean_title(ebay_title)
-    #     matches = []
-        
-    #     # Check if eBay title mentions bulk/box
-    #     ebay_mentions_bulk = any(word in ebay_title.lower() for word in ['box', 'case', 'bulk', 'wholesale'])
-        
-    #     for _, product in self.products_df.iterrows():
-    #         cms_name = product['cms_product_name']
-    #         cms_code = product['cms_product_code'] if pd.notna(product['cms_product_code']) else 'NO_CODE'
-            
-    #         # Calculate similarity score
-    #         score = self.calculate_similarity(ebay_clean, cms_name)
-            
-    #         # Check for specific product indicators
-    #         bonus_score = 0
-    #         penalty_score = 0
-            
-    #         # Check if CMS product is bulk/box
-    #         cms_is_bulk = any(word in cms_name.lower() for word in ['(1 box)', '(1 case)', 'x 48', 'x 72', 'x 100'])
-            
-    #         # Apply bulk matching logic
-    #         if cms_is_bulk and not ebay_mentions_bulk:
-    #             # Heavily penalise bulk items when eBay doesn't mention bulk
-    #             penalty_score = 0.5
-    #         elif not cms_is_bulk and ebay_mentions_bulk:
-    #             # Penalise non-bulk items when eBay mentions bulk
-    #             penalty_score = 0.3
-            
-    #         # Size/quantity matching
-    #         ebay_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', ebay_title.lower())
-    #         cms_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', cms_name.lower())
-    #         if ebay_sizes and cms_sizes and set(ebay_sizes) == set(cms_sizes):
-    #             bonus_score += 0.1
-            
-    #         # Multi-pack matching
-    #         ebay_pack = re.search(r'x\s*(\d+)', ebay_title.lower())
-    #         cms_pack = re.search(r'x\s*(\d+)', cms_name.lower())
-    #         if ebay_pack and cms_pack:
-    #             if ebay_pack.group(1) == cms_pack.group(1):
-    #                 bonus_score += 0.1
-    #             else:
-    #                 # Different pack sizes should be penalised
-    #                 penalty_score += 0.1
-            
-    #         final_score = max(0, min(score + bonus_score - penalty_score, 1.0))
-            
-    #         if final_score >= threshold:
-    #             matches.append({
-    #                 'cms_code': cms_code,
-    #                 'cms_name': cms_name,
-    #                 'confidence': final_score,
-    #                 'wholesale_price': product['wholesale_price']
-    #             })
-        
-    #     # Sort by confidence
-    #     matches.sort(key=lambda x: x['confidence'], reverse=True)
-        
-    #     return matches[:5]  # Return top 5 matches
-    
-
 
     def match_ebay_title_enhanced(self, ebay_title: str, threshold: float = 0.7) -> list:
         """
-        Enhanced matching with manual mappings and special rules
+        Enhanced matching with all fixes:
+        - Bracket notation parsing
+        - Strict product type matching
+        - Multi-pack quantity matching
+        - Variant handling (GREEN, PUMP, HydroMoist, etc.)
+        - Manual mappings and special rules
         """
         from manual_product_mappings import (
-            get_manual_cost, is_assorted_cosmetics, 
-            get_flawlessly_u_unit_cost, apply_special_matching_rule
+            get_manual_cost, is_assorted_cosmetics, get_flawlessly_u_unit_cost,
+            apply_special_matching_rule, parse_bracket_selection, normalize_product_type,
+            extract_size_and_quantity, should_match_variant,
+            handle_product_sets, clean_silka_title  # ADD THESE TWO
         )
+        
+        set_products = handle_product_sets(ebay_title)
+        if set_products:
+            matches = []
+            for set_item in set_products:
+                # Find each product in the catalogue
+                for _, product in self.products_df.iterrows():
+                    if product['cms_product_name'] == set_item['name']:
+                        matches.append({
+                            'cms_code': product['cms_product_code'],
+                            'cms_name': product['cms_product_name'],
+                            'confidence': 1.0,
+                            'wholesale_price': product['wholesale_price'],
+                            'special_handling': 'product_set'
+                        })
+            
+            # Only return if we found matches
+            if matches:
+                return matches
+            
+        # Clean Silka titles
+        ebay_title = clean_silka_title(ebay_title)
+    
+        # Parse bracket selection first
+        ebay_title_clean, bracket_variant = parse_bracket_selection(ebay_title)
+        
+        # If bracket variant exists, use it as the primary search term
+        if bracket_variant:
+            # Handle special Kojie San bracket notation
+            if "kojie san" in ebay_title_clean.lower():
+                # Check if it's the 45g special variant
+                if bracket_variant == "45g":
+                    manual_info = get_manual_cost("kojie san soap 45g")
+                    if manual_info:
+                        return [{
+                            'cms_code': 'MANUAL_ENTRY',
+                            'cms_name': manual_info['cms_name'],
+                            'confidence': 1.0,
+                            'wholesale_price': manual_info['cost'],
+                            'special_handling': 'manual_cost_override'
+                        }]
+                
+                # Reconstruct title with bracket variant
+                ebay_title = f"Kojie San Soap {bracket_variant} - Skin Brightening & Lightening"
         
         # Check if it's an Assorted Cosmetics product
         if is_assorted_cosmetics(ebay_title):
@@ -200,18 +184,21 @@ class ProductCatalogueManager:
                     }]
         
         # Check for manual cost mapping
-        manual_cost = get_manual_cost(ebay_title)
-        if manual_cost:
+        manual_info = get_manual_cost(ebay_title)
+        if manual_info:
             return [{
                 'cms_code': 'MANUAL_ENTRY',
-                'cms_name': ebay_title,
+                'cms_name': manual_info['cms_name'],
                 'confidence': 1.0,
-                'wholesale_price': manual_cost,
+                'wholesale_price': manual_info['cost'],
                 'special_handling': 'manual_cost_override'
             }]
         
-        # Otherwise, use the original matching logic
+        # Extract product characteristics
+        ebay_type = normalize_product_type(ebay_title)
+        ebay_info = extract_size_and_quantity(ebay_title)
         ebay_clean = self.clean_title(ebay_title)
+        
         matches = []
         
         # Check if eBay title mentions bulk/box
@@ -221,55 +208,114 @@ class ProductCatalogueManager:
             cms_name = product['cms_product_name']
             cms_code = product['cms_product_code'] if pd.notna(product['cms_product_code']) else 'NO_CODE'
             
-            # Calculate similarity score
+            # Extract CMS product characteristics
+            cms_type = normalize_product_type(cms_name)
+            cms_info = extract_size_and_quantity(cms_name)
+            
+            # Skip if product types don't match (unless one is None)
+            if ebay_type and cms_type and ebay_type != cms_type:
+                continue
+            
+            # Calculate base similarity score
             score = self.calculate_similarity(ebay_clean, cms_name)
             
-            # Check for specific product indicators
             bonus_score = 0
             penalty_score = 0
             
-            # Check if CMS product is bulk/box
-            cms_is_bulk = any(word in cms_name.lower() for word in ['(1 box)', '(1 case)', 'x 48', 'x 72', 'x 100'])
-            
-            # Apply bulk matching logic
-            if cms_is_bulk and not ebay_mentions_bulk:
-                # Heavily penalise bulk items when eBay doesn't mention bulk
-                penalty_score = 0.5
-            elif not cms_is_bulk and ebay_mentions_bulk:
-                # Penalise non-bulk items when eBay mentions bulk
-                penalty_score = 0.3
-            
-            # Size/quantity matching
-            ebay_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', ebay_title.lower())
-            cms_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', cms_name.lower())
-            if ebay_sizes and cms_sizes and set(ebay_sizes) == set(cms_sizes):
-                bonus_score += 0.1
+            # Exact size matching
+            if ebay_info['size'] and cms_info['size']:
+                if ebay_info['size'] == cms_info['size']:
+                    bonus_score += 0.15
+                else:
+                    penalty_score += 0.2
             
             # Multi-pack matching
-            ebay_pack = re.search(r'x\s*(\d+)', ebay_title.lower())
-            cms_pack = re.search(r'x\s*(\d+)', cms_name.lower())
-            if ebay_pack and cms_pack:
-                if ebay_pack.group(1) == cms_pack.group(1):
-                    bonus_score += 0.1
+            if ebay_info['is_multipack'] and cms_info['is_multipack']:
+                if ebay_info['quantity'] == cms_info['quantity']:
+                    bonus_score += 0.2
                 else:
-                    # Different pack sizes should be penalised
-                    penalty_score += 0.1
+                    # Check for equivalent quantities (e.g., x3 = x2+1)
+                    cms_total = cms_info['quantity']
+                    if "+1" in cms_name.lower() or "free" in cms_name.lower():
+                        # Extract base quantity for x+1 free patterns
+                        base_match = re.search(r'(\d+)\s*\+\s*1', cms_name)
+                        if base_match:
+                            cms_total = int(base_match.group(1)) + 1
+                    
+                    if ebay_info['quantity'] == cms_total:
+                        bonus_score += 0.15
+                    else:
+                        penalty_score += 0.3
+            elif ebay_info['is_multipack'] != cms_info['is_multipack']:
+                penalty_score += 0.4
+            
+            # Check if CMS product is bulk/box
+            cms_is_bulk = any(word in cms_name.lower() for word in ['(1 box)', '(1 case)', 'x 48', 'x 72', 'x 100'])
+
+            # Apply bulk matching logic
+            if cms_is_bulk and not ebay_mentions_bulk:
+                penalty_score += 0.5
+            elif not cms_is_bulk and ebay_mentions_bulk:
+                penalty_score += 0.3
+
+            # ADD THIS NEW CHECK RIGHT AFTER:
+            # If eBay mentions BUNDLE but CMS is a case, heavily penalise
+            if "bundle" in ebay_title.lower() and "(1 case" in cms_name.lower():
+                penalty_score += 0.8  # Almost eliminate this match
+            
+            # Variant checking
+            # GREEN variant
+            if "green" in cms_name.lower() and "green" not in ebay_title.lower():
+                penalty_score += 0.5
+            elif "green" not in cms_name.lower() and "green" in ebay_title.lower():
+                penalty_score += 0.3
+            
+            # PUMP variant (only for Silka lotions)
+            if "silka" in cms_name.lower() and "lotion" in cms_name.lower():
+                if "with pump" in cms_name.lower() and "pump" not in ebay_title.lower():
+                    penalty_score += 0.3
+                elif "with pump" not in cms_name.lower() and "pump" in ebay_title.lower():
+                    penalty_score += 0.3
+            
+            # HydroMoist variant
+            if "hydromoist" in cms_name.lower() and not any(h in ebay_title.lower() for h in ["hydromoist", "hydro moist"]):
+                penalty_score += 0.5
+            
+            # Dream White variant
+            if "dream white" in cms_name.lower() and not any(d in ebay_title.lower() for d in ["dream white", "dreamwhite"]):
+                penalty_score += 0.5
+            
+            # Extract variant checking for bundle handling
+            if "bundle" in ebay_title.lower() and ebay_info['is_multipack']:
+                # This is a bundle pack, not a pre-packaged multi-pack
+                if not cms_info['is_multipack']:
+                    # Single item in CMS, multiply for bundle
+                    bonus_score += 0.1
+                    # Will need special handling in order processing
             
             final_score = max(0, min(score + bonus_score - penalty_score, 1.0))
             
             if final_score >= threshold:
-                matches.append({
+                match_result = {
                     'cms_code': cms_code,
                     'cms_name': cms_name,
                     'confidence': final_score,
                     'wholesale_price': product['wholesale_price']
-                })
+                }
+                
+                # Add bundle multiplier if needed
+                if "bundle" in ebay_title.lower() and re.search(r'(\d+)\s*pack\s*bundle', ebay_title.lower()):
+                    bundle_match = re.search(r'(\d+)\s*pack\s*bundle', ebay_title.lower())
+                    if bundle_match:
+                        match_result['bundle_quantity'] = int(bundle_match.group(1))
+                        match_result['special_handling'] = 'bundle_multiply'
+                
+                matches.append(match_result)
         
         # Sort by confidence
         matches.sort(key=lambda x: x['confidence'], reverse=True)
         
-        return matches[:5]  # Return top 5 matches
-    
+        return matches[:5]  # Return top 5 matches    
     
     def clean_title(self, title: str) -> str:
         """Clean product title for matching"""
@@ -369,7 +415,7 @@ class ProductCatalogueManager:
         # Test each unique item
         results = []
         for item_title in unique_items:
-            matches = self.match_ebay_title(item_title)
+            matches = self.match_ebay_title_enhanced(item_title)
             
             results.append({
                 'ebay_title': item_title,
