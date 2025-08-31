@@ -8,11 +8,11 @@ import numpy as np
 from datetime import datetime, date
 import re
 from difflib import SequenceMatcher
-from typing import Dict, List, Tuple, Optional
 import json
 import os
 import logging
 
+from manual_product_mappings import *
 
 # Set up logging
 logging.basicConfig(
@@ -52,7 +52,7 @@ class ProductCatalogueManager:
         self.matching_patterns[cms_code].append(pattern)
         logger.info(f"Added pattern '{pattern}' for CMS code '{cms_code}'.")
                     
-    def create_search_patterns(self) -> None:
+    def create_search_patterns(self) -> dict:
         """Create initial search patterns for product names"""
         patterns = {}
         
@@ -66,7 +66,7 @@ class ProductCatalogueManager:
                 
                 # Remove trailing indicators like 'NEW LOWER PRICE" etc
                 base_pattern = re.sub(r'\s*(NEW LOWER PRICE|NEW LOWER PRICE!|NEW LOWER PRICE!!|NEW LOWER PRICE!?)\s*$', '', base_pattern, flags=re.IGNORECASE)
-                base_pattern = re.sub(r'-?\sCLEARNACE.*$', '', base_pattern, flags=re.IGNORECASE)
+                base_pattern = re.sub(r'-?\s*CLEARANCE.*$', '', base_pattern, flags=re.IGNORECASE)
                 base_pattern = re.sub(r'-?\s*HALF PRICE.*', '', base_pattern, flags=re.IGNORECASE)
                 base_pattern = re.sub(r'-?\s*BUY 1 GET 1.*', '', base_pattern, flags=re.IGNORECASE)
                 base_pattern = re.sub(r'-?\s*INTRODUCTORY OFFER.*', '', base_pattern, flags=re.IGNORECASE)
@@ -85,7 +85,7 @@ class ProductCatalogueManager:
                 
         return patterns
     
-    def extract_keywords(self, text: str) -> List[str]:
+    def extract_keywords(self, text: str) -> str:
         """Extract important keywords from product name"""
         # Remove common words
         stop_words = {
@@ -99,13 +99,123 @@ class ProductCatalogueManager:
         
         return keywords
     
-    def match_ebay_title(self, ebay_title: str, threshold: float = 0.7) -> List[Dict]:
+    
+    # def match_ebay_title(self, ebay_title: str, threshold: float = 0.7) -> list:
+    #     """
+    #     Match eBay title to CMS products
+    #     Returns list of matches with confidence scores
+    #     """
+    #     ebay_clean = self.clean_title(ebay_title)
+    #     matches = []
+        
+    #     # Check if eBay title mentions bulk/box
+    #     ebay_mentions_bulk = any(word in ebay_title.lower() for word in ['box', 'case', 'bulk', 'wholesale'])
+        
+    #     for _, product in self.products_df.iterrows():
+    #         cms_name = product['cms_product_name']
+    #         cms_code = product['cms_product_code'] if pd.notna(product['cms_product_code']) else 'NO_CODE'
+            
+    #         # Calculate similarity score
+    #         score = self.calculate_similarity(ebay_clean, cms_name)
+            
+    #         # Check for specific product indicators
+    #         bonus_score = 0
+    #         penalty_score = 0
+            
+    #         # Check if CMS product is bulk/box
+    #         cms_is_bulk = any(word in cms_name.lower() for word in ['(1 box)', '(1 case)', 'x 48', 'x 72', 'x 100'])
+            
+    #         # Apply bulk matching logic
+    #         if cms_is_bulk and not ebay_mentions_bulk:
+    #             # Heavily penalise bulk items when eBay doesn't mention bulk
+    #             penalty_score = 0.5
+    #         elif not cms_is_bulk and ebay_mentions_bulk:
+    #             # Penalise non-bulk items when eBay mentions bulk
+    #             penalty_score = 0.3
+            
+    #         # Size/quantity matching
+    #         ebay_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', ebay_title.lower())
+    #         cms_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', cms_name.lower())
+    #         if ebay_sizes and cms_sizes and set(ebay_sizes) == set(cms_sizes):
+    #             bonus_score += 0.1
+            
+    #         # Multi-pack matching
+    #         ebay_pack = re.search(r'x\s*(\d+)', ebay_title.lower())
+    #         cms_pack = re.search(r'x\s*(\d+)', cms_name.lower())
+    #         if ebay_pack and cms_pack:
+    #             if ebay_pack.group(1) == cms_pack.group(1):
+    #                 bonus_score += 0.1
+    #             else:
+    #                 # Different pack sizes should be penalised
+    #                 penalty_score += 0.1
+            
+    #         final_score = max(0, min(score + bonus_score - penalty_score, 1.0))
+            
+    #         if final_score >= threshold:
+    #             matches.append({
+    #                 'cms_code': cms_code,
+    #                 'cms_name': cms_name,
+    #                 'confidence': final_score,
+    #                 'wholesale_price': product['wholesale_price']
+    #             })
+        
+    #     # Sort by confidence
+    #     matches.sort(key=lambda x: x['confidence'], reverse=True)
+        
+    #     return matches[:5]  # Return top 5 matches
+    
+
+
+    def match_ebay_title_enhanced(self, ebay_title: str, threshold: float = 0.7) -> list:
         """
-        Match eBay title to CMS products
-        Returns list of matches with confidence scores
+        Enhanced matching with manual mappings and special rules
         """
+        from manual_product_mappings import (
+            get_manual_cost, is_assorted_cosmetics, 
+            get_flawlessly_u_unit_cost, apply_special_matching_rule
+        )
+        
+        # Check if it's an Assorted Cosmetics product
+        if is_assorted_cosmetics(ebay_title):
+            unit_cost = get_flawlessly_u_unit_cost(ebay_title)
+            return [{
+                'cms_code': 'ASSORTED_COSMETICS',
+                'cms_name': 'Assorted Cosmetics',
+                'confidence': 1.0,
+                'wholesale_price': unit_cost,
+                'special_handling': 'flawlessly_u_aggregation'
+            }]
+        
+        # Check for special matching rules
+        special_match = apply_special_matching_rule(ebay_title)
+        if special_match:
+            # Find this product in the catalogue
+            for _, product in self.products_df.iterrows():
+                if product['cms_product_name'] == special_match:
+                    return [{
+                        'cms_code': product['cms_product_code'],
+                        'cms_name': product['cms_product_name'],
+                        'confidence': 1.0,
+                        'wholesale_price': product['wholesale_price']
+                    }]
+        
+        # Check for manual cost mapping
+        manual_cost = get_manual_cost(ebay_title)
+        if manual_cost:
+            return [{
+                'cms_code': 'MANUAL_ENTRY',
+                'cms_name': ebay_title,
+                'confidence': 1.0,
+                'wholesale_price': manual_cost,
+                'special_handling': 'manual_cost_override'
+            }]
+        
+        # Otherwise, use the original matching logic
         ebay_clean = self.clean_title(ebay_title)
         matches = []
+        
+        # Check if eBay title mentions bulk/box
+        ebay_mentions_bulk = any(word in ebay_title.lower() for word in ['box', 'case', 'bulk', 'wholesale'])
         
         for _, product in self.products_df.iterrows():
             cms_name = product['cms_product_name']
@@ -116,6 +226,18 @@ class ProductCatalogueManager:
             
             # Check for specific product indicators
             bonus_score = 0
+            penalty_score = 0
+            
+            # Check if CMS product is bulk/box
+            cms_is_bulk = any(word in cms_name.lower() for word in ['(1 box)', '(1 case)', 'x 48', 'x 72', 'x 100'])
+            
+            # Apply bulk matching logic
+            if cms_is_bulk and not ebay_mentions_bulk:
+                # Heavily penalise bulk items when eBay doesn't mention bulk
+                penalty_score = 0.5
+            elif not cms_is_bulk and ebay_mentions_bulk:
+                # Penalise non-bulk items when eBay mentions bulk
+                penalty_score = 0.3
             
             # Size/quantity matching
             ebay_sizes = re.findall(r'\d+\s*(?:g|ml|mg)', ebay_title.lower())
@@ -126,10 +248,14 @@ class ProductCatalogueManager:
             # Multi-pack matching
             ebay_pack = re.search(r'x\s*(\d+)', ebay_title.lower())
             cms_pack = re.search(r'x\s*(\d+)', cms_name.lower())
-            if ebay_pack and cms_pack and ebay_pack.group(1) == cms_pack.group(1):
-                bonus_score += 0.1
+            if ebay_pack and cms_pack:
+                if ebay_pack.group(1) == cms_pack.group(1):
+                    bonus_score += 0.1
+                else:
+                    # Different pack sizes should be penalised
+                    penalty_score += 0.1
             
-            final_score = min(score + bonus_score, 1.0)
+            final_score = max(0, min(score + bonus_score - penalty_score, 1.0))
             
             if final_score >= threshold:
                 matches.append({
@@ -143,6 +269,7 @@ class ProductCatalogueManager:
         matches.sort(key=lambda x: x['confidence'], reverse=True)
         
         return matches[:5]  # Return top 5 matches
+    
     
     def clean_title(self, title: str) -> str:
         """Clean product title for matching"""
@@ -183,7 +310,7 @@ class ProductCatalogueManager:
         
         return min(base_score, 1.0)
     
-    def extract_brand(self, text: str) -> Optional[str]:
+    def extract_brand(self, text: str) -> str:
         """Extract brand name from product text"""
         brands = [
             'kojie san', 'belo', 'gluta-c', 'glutamax', 'silka', 
@@ -197,10 +324,12 @@ class ProductCatalogueManager:
         for brand in brands:
             if brand in text_lower:
                 return brand
-        return None
+        return ''
     
-    def get_price_at_date(self, cms_code: str, target_date: date) -> Dict:
+    def get_price_at_date(self, cms_code: str, target_date: date) -> dict:
         """Get the price that was effective on a specific date"""
+        if self.products_df is None or self.products_df.empty:
+            return {'error': 'Product catalogue is not loaded'}
         if cms_code not in self.products_df['cms_product_code'].values:
             return {'error': 'Product code not found'}
         
@@ -255,7 +384,7 @@ class ProductCatalogueManager:
         
         return results
     
-    def _generate_matching_report(self, results: List[Dict], output_file: str = None):
+    def _generate_matching_report(self, results, output_file=None):
         """Generate a matching report"""
         if output_file is None:
             output_file = f"data/reports/matching_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -402,7 +531,7 @@ if __name__ == "__main__":
     print("\n\nTesting sample eBay titles:")
     print("="*80)
     for title in test_titles:
-        matches = catalogue.match_ebay_title(title)
+        matches = catalogue.match_ebay_title_enhanced(title)
         print(f"\neBay: {title}")
         if matches:
             best = matches[0]
@@ -414,5 +543,5 @@ if __name__ == "__main__":
             print("  No match found")
     
     # If you have the eBay CSV file, uncomment this:
-    # catalogue.test_matching_with_ebay_data('data/input/eBayOrdersReportAug132025143A493A20070013243478577.csv')
+    catalogue.test_matching_with_ebay_data('data/input/eBay-OrdersReport-Aug-13-2025-14%3A49%3A20-0700-13243478577.csv')
                 
