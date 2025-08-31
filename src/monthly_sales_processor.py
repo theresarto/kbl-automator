@@ -76,10 +76,17 @@ class MonthlySalesProcessor:
         # Clean up sold for price - handle missing values
         sales_df['Sold for'] = sales_df['Sold for'].fillna('£0').str.replace('£', '').astype(float)
         
+        if 'Sold for' in sales_df.columns:
+                sales_df['Sold for'] = sales_df['Sold for'].fillna('0')
+                sales_df['Sold for'] = sales_df['Sold for'].astype(str).str.replace('£', '').str.strip()
+                sales_df['Sold for'] = sales_df['Sold for'].replace('', '0')
+                sales_df['Sold for'] = pd.to_numeric(sales_df['Sold for'], errors='coerce').fillna(0)
+            
         # Check promoted listing
         sales_df['Is promoted'] = sales_df['Sold via Promoted listings'] == 'Yes'
-        
+            
         return sales_df
+
     
     def process_sales_data(self, ebay_csv_path: str) -> dict:
         """
@@ -140,18 +147,22 @@ class MonthlySalesProcessor:
     
     def _create_matched_row(self, ebay_row: pd.Series, match: dict, quantity: float) -> dict:
         """Create a row with matched product data"""
-        # Calculate fees
-        fees = self.calculate_ebay_fees(ebay_row['Sold for'], ebay_row['Is promoted'])
+        # Calculate total sale amount
+        unit_price = ebay_row['Sold for']
+        total_sale = unit_price * ebay_row['Quantity']  # Use original quantity for sale total
         
-        # Get postage cost based on delivery service
+        # Calculate fees on total sale amount
+        fees = self.calculate_ebay_fees(total_sale, ebay_row['Is promoted'])
+        
+        # Get postage cost
         postage_cost = self._get_postage_cost(ebay_row)
         
-        # Calculate costs and profit
-        cost_price = match['wholesale_price'] * quantity
+        # Calculate costs
+        cost_price = match['wholesale_price'] * quantity  # Use adjusted quantity for bundles
         cost_exc_vat = cost_price / 1.2
         
-        # Net profit = Sale price - All costs (inc VAT)
-        net_profit = ebay_row['Sold for'] - fees['total_fee'] - postage_cost - cost_price
+        # Net profit = Total sale - All costs (inc VAT)
+        net_profit = total_sale - fees['total_fee'] - postage_cost - cost_price
         
         return {
             'Sales record number': ebay_row['Sales record number'],
@@ -162,22 +173,24 @@ class MonthlySalesProcessor:
             'eBay title': ebay_row['Item title'],
             'CMS code': match.get('cms_code', ''),
             'Quantity': quantity,
-            'Sold for': ebay_row['Sold for'],
+            'Unit price': unit_price,  # Add this
+            'Sold for': total_sale,     # This is now the total
             'Postage': postage_cost,
             'Promoted listing': 'Yes' if ebay_row['Is promoted'] else 'No',
             'EBAY FEES': fees['total_fee'],
             'Cost price': cost_price,
             'COST LESS VAT': cost_exc_vat,
             'NET PROFIT': net_profit,
-            'Delivery service': ebay_row.get('Delivery service', ''),
-            'Tracking number': ebay_row.get('Tracking number', ''),
-            'Match confidence': match.get('confidence', 1.0),
-            'Special handling': match.get('special_handling', '')
+            # ... rest of fields
         }
     
     def _create_unmatched_row(self, ebay_row: pd.Series) -> dict:
         """Create a row for unmatched products"""
-        fees = self.calculate_ebay_fees(ebay_row['Sold for'], ebay_row['Is promoted'])
+        # Calculate total sale
+        unit_price = ebay_row['Sold for']
+        total_sale = unit_price * ebay_row['Quantity']
+        
+        fees = self.calculate_ebay_fees(total_sale, ebay_row['Is promoted'])
         postage_cost = self._get_postage_cost(ebay_row)
         
         return {
@@ -189,7 +202,8 @@ class MonthlySalesProcessor:
             'eBay title': ebay_row['Item title'],
             'CMS code': 'NO_MATCH',
             'Quantity': ebay_row['Quantity'],
-            'Sold for': ebay_row['Sold for'],
+            'Unit price': unit_price,
+            'Sold for': total_sale,  # Total amount
             'Postage': postage_cost,
             'Promoted listing': 'Yes' if ebay_row['Is promoted'] else 'No',
             'EBAY FEES': fees['total_fee'],
@@ -330,5 +344,15 @@ if __name__ == "__main__":
     # Print summary
     for month, df in monthly_data.items():
         print(f"\n{month} Summary:")
-        print(f"Total sales: £{df[df['Sales record number'] != 'Total']['Sold for'].sum():.2f}")
-        print(f"Total profit: £{df[df['Sales record number'] == 'Total']['NET PROFIT'].values[0]:.2f}")
+        # Convert to numeric first, handling empty strings
+        sales_only = df[df['Sales record number'] != 'Total']
+        if not sales_only.empty:
+            # Ensure 'Sold for' is numeric
+            total_sales = pd.to_numeric(sales_only['Sold for'], errors='coerce').sum()
+            print(f"Total sales: £{total_sales:.2f}")
+        
+        # Get the total row
+        total_row = df[df['Sales record number'] == 'Total']
+        if not total_row.empty:
+            net_profit = total_row['NET PROFIT'].iloc[0]
+            print(f"Total profit: £{net_profit:.2f}")
