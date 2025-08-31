@@ -135,7 +135,7 @@ def parse_bracket_selection(ebay_title: str) -> tuple:
         return cleaned_title, variant
     return ebay_title, None
 
-def normalize_product_type(title: str) -> str:
+def normalize_product_type(title: str):
     """Extract and normalize product type"""
     title_lower = title.lower()
     
@@ -178,7 +178,7 @@ def extract_size_and_quantity(title: str) -> dict:
     
     return result
 
-def get_manual_cost(product_name: str) -> dict:
+def get_manual_cost(product_name: str):
     """Get manual cost and CMS name for products not in catalogue"""
     product_lower = product_name.lower()
     
@@ -237,7 +237,7 @@ def get_flawlessly_u_unit_cost(product_name: str) -> float:
     # Default fallback
     return 1.50
 
-def apply_special_matching_rule(ebay_title: str) -> str:
+def apply_special_matching_rule(ebay_title: str):
     """Apply special matching rules to find CMS product name"""
     ebay_lower = ebay_title.lower()
     
@@ -273,7 +273,7 @@ def should_match_variant(ebay_title: str, cms_name: str, variant: str) -> bool:
 
 # Add these at the END of manual_product_mappings.py
 
-def handle_product_sets(ebay_title: str) -> list:
+def handle_product_sets(ebay_title: str):
     """
     Handle product sets (e.g., SOAP & LOTION set)
     Returns list of individual products if it's a set

@@ -562,6 +562,30 @@ if __name__ == "__main__":
     # Initialise catalogue manager
     catalogue = ProductCatalogueManager()
     
+    # Debug code to test the set matching
+    test_title = "Extract Papaya Calamansi SOAP 125g & LOTION 200ml Set - Made in Philippines"
+
+    # Check if it's being detected as a set
+    from manual_product_mappings import handle_product_sets
+    set_products = handle_product_sets(test_title)
+    print(f"Set detected: {set_products}")
+
+    # Check if these exact names exist in your catalogue
+    if set_products:
+        for item in set_products:
+            print(f"\nLooking for: {item['name']}")
+            # Check if this exact name exists
+            found = catalogue.products_df[catalogue.products_df['cms_product_name'] == item['name']]
+            if not found.empty:
+                print(f"Found in catalogue: {found['cms_product_name'].values[0]}")
+            else:
+                print("NOT FOUND in catalogue")
+                # Show similar products
+                print("Similar products:")
+                for _, prod in catalogue.products_df.iterrows():
+                    if 'extract' in prod['cms_product_name'].lower() and item['type'] in prod['cms_product_name'].lower():
+                        print(f"  - {prod['cms_product_name']}")
+    
     # Export mapping template for review
     catalogue.export_mapping_template()
     
@@ -579,18 +603,25 @@ if __name__ == "__main__":
     for title in test_titles:
         matches = catalogue.match_ebay_title(title)
         print(f"\neBay: {title}")
+        
         if matches:
-            if any(m.get('special_handling') == 'product_set' for m in matches):
-                # Show all matches for sets
+            # Check if it's a product set
+            if len(matches) > 1 and all(m.get('special_handling') == 'product_set' for m in matches):
+                print("  Product Set:")
                 for match in matches:
                     print(f"  ✓ Match: {match['cms_name']}")
                     print(f"    Code: {match['cms_code']}")
+                    print(f"    Confidence: {match['confidence']:.2%}")
                     print(f"    Price: £{match['wholesale_price']}")
             else:
-                # Show best match for single products
+                # Single product - show best match
                 best = matches[0]
+                print(f"  Match: {best['cms_name']}")
+                print(f"  Code: {best['cms_code']}")
+                print(f"  Confidence: {best['confidence']:.2%}")
+                print(f"  Price: £{best['wholesale_price']}")
         else:
-            print("  No match found")
+            print("  ✗ No match found")
     
     # If you have the eBay CSV file, uncomment this:
     catalogue.test_matching_with_ebay_data('data/input/eBay-OrdersReport-Aug-13-2025-14%3A49%3A20-0700-13243478577.csv')
