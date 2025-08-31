@@ -59,12 +59,22 @@ class MonthlySalesProcessor:
         # Filter to only rows with item titles (child rows)
         sales_df = df[df['Item title'].notna()].copy()
         
-        # Parse sale date
-        sales_df['Sale date'] = pd.to_datetime(sales_df['Sale date'])
+        # Parse sale date - handle the specific format from eBay
+        # Try different formats
+        try:
+            sales_df['Sale date'] = pd.to_datetime(sales_df['Sale date'], format='%d %b, %Y %H:%M:%S PDT')
+        except:
+            try:
+                sales_df['Sale date'] = pd.to_datetime(sales_df['Sale date'], format='%d %b, %Y %H:%M:%S PST')
+            except:
+                # Fallback to automatic parsing
+                sales_df['Sale date'] = pd.to_datetime(sales_df['Sale date'])
+        
+        # Create month column - this is the fix
         sales_df['Sale month'] = sales_df['Sale date'].dt.strftime('%B %Y')
         
-        # Clean up sold for price
-        sales_df['Sold for'] = sales_df['Sold for'].str.replace('£', '').astype(float)
+        # Clean up sold for price - handle missing values
+        sales_df['Sold for'] = sales_df['Sold for'].fillna('£0').str.replace('£', '').astype(float)
         
         # Check promoted listing
         sales_df['Is promoted'] = sales_df['Sold via Promoted listings'] == 'Yes'
@@ -78,6 +88,10 @@ class MonthlySalesProcessor:
         """
         # Parse eBay data
         sales_df = self.parse_ebay_csv(ebay_csv_path)
+        
+        # Debug: Check what months we have
+        print(f"Unique months found: {sales_df['Sale month'].unique()}")
+        print(f"Sale month data type: {sales_df['Sale month'].dtype}")
         
         # Add product matching
         print("Matching products to CMS catalogue...")
