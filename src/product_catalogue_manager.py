@@ -99,7 +99,7 @@ class ProductCatalogueManager:
         
         return keywords
 
-    def match_ebay_title_enhanced(self, ebay_title: str, threshold: float = 0.7) -> list:
+    def match_ebay_title(self, ebay_title: str, threshold: float = 0.7) -> list:
         """
         Enhanced matching with all fixes:
         - Bracket notation parsing
@@ -415,7 +415,7 @@ class ProductCatalogueManager:
         # Test each unique item
         results = []
         for item_title in unique_items:
-            matches = self.match_ebay_title_enhanced(item_title)
+            matches = self.match_ebay_title(item_title)
             
             results.append({
                 'ebay_title': item_title,
@@ -577,14 +577,18 @@ if __name__ == "__main__":
     print("\n\nTesting sample eBay titles:")
     print("="*80)
     for title in test_titles:
-        matches = catalogue.match_ebay_title_enhanced(title)
+        matches = catalogue.match_ebay_title(title)
         print(f"\neBay: {title}")
         if matches:
-            best = matches[0]
-            print(f"  Match: {best['cms_name']}")
-            print(f"  Code: {best['cms_code']}")
-            print(f"  Confidence: {best['confidence']:.2%}")
-            print(f"  Price: £{best['wholesale_price']}")
+            if any(m.get('special_handling') == 'product_set' for m in matches):
+                # Show all matches for sets
+                for match in matches:
+                    print(f"  ✓ Match: {match['cms_name']}")
+                    print(f"    Code: {match['cms_code']}")
+                    print(f"    Price: £{match['wholesale_price']}")
+            else:
+                # Show best match for single products
+                best = matches[0]
         else:
             print("  No match found")
     

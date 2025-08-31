@@ -105,7 +105,7 @@ SPECIAL_MATCHING_RULES = {
     r"silka.*premium.*body wash.*500ml": "Silka Papaya Luxe Lightening Body Wash 500ml",
     
     # Silka Orange - ignore orange and match regular
-    r"silka orange papaya soap.*90g\s*x\s*3": "Silka Papaya Skin Lightening & brightening Soap 3 x 90g Soap (Triple Pack)",
+    r"silka.*papaya.*soap.*90g\s*x\s*3": "Silka Papaya Skin Lightening & brightening Soap 3 x 90g Soap (Triple Pack)",
 }
 
 # Products that should be grouped as "Assorted Cosmetics"
