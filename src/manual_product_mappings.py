@@ -106,6 +106,18 @@ SPECIAL_MATCHING_RULES = {
     
     # Silka Orange - ignore orange and match regular
     r"silka.*papaya.*soap.*90g\s*x\s*3": "Silka Papaya Skin Lightening & brightening Soap 3 x 90g Soap (Triple Pack)",
+    
+    # ---- AMAZON-SPECIFIC RULES ---- #
+
+    # Amazon-specific product mappings
+    r"glupa glutathione.*whitening soap.*135g": "Glupa Glutathione & Papaya Skin Lightening & Brightening Soap 135g - NEW LOWER PRICE!",
+    r"gluta c kojic plus face and neck cream": "Gluta-C with Kojic Plus Lightening & Brightening Face & Neck Cream 25g",
+    r"gluta-c facial day cream": "Gluta-C Skin Lightening & Brightening Facial DAY Cream 30ml",
+    r"papaya calamansi extract whitening soap": "Extract Skin Lightening & Brightening Herbal Soap Papaya Calamansi 125g",
+    r"kojie san.*lightening.*soap.*3 bars.*100g": "Kojie San Skin Lightening & Brightening Soap 100g x 3",
+    r"4 pack extract papaya calamansi": "Extract Skin Lightening & Brightening Herbal Soap Papaya Calamansi 125g",
+    r"assorted eskinol facial scrub": "Eskinol CLASSIC Lightening & Brightening Face Cleanser 225ml",
+    r"gluta-c.*underarm.*bikini.*whitening.*gel.*cream": "Gluta-C Intense Lightening & Brightening Underarm & Bikini Gel 20ml",
 }
 
 # Products that should be grouped as "Assorted Cosmetics"

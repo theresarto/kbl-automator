@@ -17,19 +17,26 @@ class OrderAggregator:
         self.monthly_data = monthly_data
         
     def create_aggregate_order(self) -> pd.DataFrame:
-        """
-        Create aggregated order summary across all months
-        Groups by CMS product and sums quantities
-        """
+        """Create aggregated order summary across all months"""
         all_sales = []
         
-        # Combine all monthly data
         for month, df in self.monthly_data.items():
+            # Determine which column to use for filtering
+            if 'Sales record number' in df.columns:
+                # eBay format
+                id_col = 'Sales record number'
+            elif 'Transaction ID' in df.columns:
+                # Amazon format
+                id_col = 'Transaction ID'
+            else:
+                continue
+                
             # Skip total rows and fee rows
             sales_only = df[
-                (df['Sales record number'] != 'Total') & 
-                (df['Sales record number'] != '') &
-                (df['Items sold'] != 'EBAY FEES FOR BUSINESS')
+                (df[id_col] != 'Total') & 
+                (df[id_col] != '') &
+                (df['Items sold'] != 'EBAY FEES FOR BUSINESS') &
+                (df['Items sold'] != 'AMAZON SUBSCRIPTION FEE')
             ].copy()
             
             # Add month column for reference
