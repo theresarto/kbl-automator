@@ -22,20 +22,32 @@ filtered_data = {month: amazon_monthly[month] for month in filtered_months if mo
 
 print(f"\nProcessing months: {list(filtered_data.keys())}")
 
+# ADD THE DEBUG CODE HERE:
+# Check data types
+for month, df in filtered_data.items():
+    print(f"\n{month} data types:")
+    print(df[['Quantity', 'Sold for', 'Cost price']].dtypes)
+
+
 # Create aggregate order
 aggregator = OrderAggregator(filtered_data)
 
-# Debug: Check what's in the data
+# Debug the aggregation process
+print("\nDEBUG - Before aggregation:")
 for month, df in filtered_data.items():
-    print(f"\n{month}:")
-    print(f"Columns: {df.columns.tolist()}")
-    print(f"Rows: {len(df)}")
-    if 'Items sold' in df.columns:
-        print(f"Items sold sample: {df['Items sold'].head(3).tolist()}")
-        
-        
+    sales_only = df[
+        (df['Transaction ID'] != 'Total') & 
+        (df['Transaction ID'] != '') &
+        (df['Items sold'] != 'AMAZON SUBSCRIPTION FEE')
+    ]
+    print(f"{month}: {len(sales_only)} sales rows")
+
 aggregated = aggregator.create_aggregate_order()
+print(f"\nDEBUG - After aggregation: {len(aggregated)} rows")
+print(aggregated.head() if len(aggregated) > 0 else "EMPTY DATAFRAME")
+
 order_list = aggregator.create_cms_order_list(aggregated)
+print(f"\nDEBUG - CMS order list: {len(order_list)} rows")
 
 # Export
 aggregator.export_order_summary(aggregated, order_list, 'data/reports/Amazon_CMS_Order_Nov2024_Mar2025.xlsx')

@@ -166,6 +166,36 @@ class AmazonSalesProcessor:
             monthly_data[month] = self._create_monthly_summary(month_df)
         
         return monthly_data
+            
+    def _apply_shipping_per_order(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply shipping cost once per order, based on date"""
+        shipping_rate = 3.21
+        cutoff_date = pd.Timestamp('2025-03-19')
+        
+        # Add Order ID column if not present
+        if 'Order ID' not in df.columns:
+            df['Order ID'] = df['Transaction ID']
+        
+        # Group by Order ID
+        for order_id in df['Order ID'].unique():
+            if pd.notna(order_id) and order_id != '':
+                order_mask = df['Order ID'] == order_id
+                order_rows = df[order_mask]
+                
+                if len(order_rows) > 0:
+                    first_idx = order_rows.index[0]
+                    sale_date = pd.to_datetime(df.loc[first_idx, 'Sale date'])
+                    
+                    # Only apply shipping if before March 19, 2025
+                    if pd.notna(sale_date) and sale_date < cutoff_date:
+                        df.loc[first_idx, 'Shipping cost'] = shipping_rate
+                        df.loc[first_idx, 'NET PROFIT'] -= shipping_rate
+                        # DON'T adjust NET PROFIT here - it's already calculated
+                    else:
+                        df.loc[first_idx, 'Shipping cost'] = 0
+        
+        return df
+        return df
     
     def _create_matched_row(self, amazon_row: pd.Series, match: dict, quantity: int, 
                         item_col: str, amount_col: str) -> dict:
@@ -180,15 +210,12 @@ class AmazonSalesProcessor:
         # Calculate fees
         fees = self.calculate_amazon_fees(sale_amount)
         
-        # Fixed shipping cost
-        shipping_cost = 3.21  # Fixed rate before March 19, 2025
-        
         # Calculate costs
         cost_price = match['wholesale_price'] * quantity
         cost_exc_vat = cost_price / 1.2
         
-        # Net profit = Sale amount - Amazon fees - Shipping cost - Product cost
-        net_profit = sale_amount - fees['total_fee'] - shipping_cost - cost_price
+        # Net profit WITHOUT shipping (we'll add shipping separately per order)
+        net_profit = sale_amount - fees['total_fee'] - cost_price
         
         # Get sale date and remove timezone
         sale_date = amazon_row.get('date/time', '')
@@ -196,7 +223,8 @@ class AmazonSalesProcessor:
             sale_date = sale_date.tz_localize(None)
         
         return {
-            'Transaction ID': amazon_row.get('Transaction ID', ''),
+            'Transaction ID': amazon_row.get('order id', ''),
+            'Order ID': amazon_row.get('order id', ''),
             'Sale date': sale_date,
             'Sale month': amazon_row['Sale month'],
             'Items sold': match['cms_name'],
@@ -204,11 +232,11 @@ class AmazonSalesProcessor:
             'CMS code': match.get('cms_code', ''),
             'Quantity': quantity,
             'Sold for': sale_amount,
-            'Shipping cost': shipping_cost,  # Add this column
+            'Shipping cost': 0,  # Will be set in _apply_shipping_per_order
             'Amazon fees': fees['total_fee'],
             'Cost price': cost_price,
             'COST LESS VAT': cost_exc_vat,
-            'NET PROFIT': net_profit,
+            'NET PROFIT': net_profit,  # Without shipping
             'Match confidence': match.get('confidence', 1.0)
         }
     
@@ -241,13 +269,24 @@ class AmazonSalesProcessor:
     
     def _create_monthly_summary(self, month_df: pd.DataFrame) -> pd.DataFrame:
         """Create summary for a specific month"""
+        # Apply shipping per order and ensure numeric columns
+        if not month_df.empty:
+            month_df = self._apply_shipping_per_order(month_df)
+            month_df['Quantity'] = pd.to_numeric(month_df['Quantity'], errors='coerce')
+            month_df['Sold for'] = pd.to_numeric(month_df['Sold for'], errors='coerce')
+            month_df['Amazon fees'] = pd.to_numeric(month_df['Amazon fees'], errors='coerce')
+            month_df['Cost price'] = pd.to_numeric(month_df['Cost price'], errors='coerce')
+            month_df['NET PROFIT'] = pd.to_numeric(month_df['NET PROFIT'], errors='coerce')
+            month_df['Shipping cost'] = pd.to_numeric(month_df['Shipping cost'], errors='coerce')
+        
         # Add monthly subscription fee
         monthly_fees = pd.DataFrame([{
             'Transaction ID': '',
             'Sale date': '',
             'Items sold': 'AMAZON SUBSCRIPTION FEE',
-            'Quantity': '',
-            'Sold for': '',
+            'Quantity': 0,
+            'Sold for': 0,
+            'Shipping cost': 0,  # Add this
             'Amazon fees': self.amazon_monthly_fee,
             'Cost price': 0,
             'COST LESS VAT': 0,
@@ -257,16 +296,22 @@ class AmazonSalesProcessor:
         # Combine with sales data
         summary_df = pd.concat([monthly_fees, month_df], ignore_index=True)
         
-        # Add totals row
+        # Convert to numeric again after concatenation
+        numeric_cols = ['Quantity', 'Sold for', 'Shipping cost', 'Amazon fees', 'Cost price', 'COST LESS VAT', 'NET PROFIT']
+        for col in numeric_cols:
+            summary_df[col] = pd.to_numeric(summary_df[col], errors='coerce').fillna(0)
+        
+        # Add totals row (fix indentation)
         totals = {
             'Transaction ID': 'Total',
             'Items sold': '',
-            'Quantity': month_df['Quantity'].sum() if not month_df.empty else 0,
-            'Sold for': month_df['Sold for'].sum() if not month_df.empty else 0,
-            'Amazon fees': (month_df['Amazon fees'].sum() if not month_df.empty else 0) + self.amazon_monthly_fee,
-            'Cost price': month_df['Cost price'].sum() if not month_df.empty else 0,
-            'COST LESS VAT': month_df['COST LESS VAT'].sum() if not month_df.empty else 0,
-            'NET PROFIT': (month_df['NET PROFIT'].sum() if not month_df.empty else 0) - self.amazon_monthly_fee
+            'Quantity': summary_df['Quantity'].sum(),
+            'Sold for': summary_df['Sold for'].sum(),
+            'Shipping cost': summary_df['Shipping cost'].sum(),
+            'Amazon fees': summary_df['Amazon fees'].sum(),
+            'Cost price': summary_df['Cost price'].sum(),
+            'COST LESS VAT': summary_df['COST LESS VAT'].sum(),
+            'NET PROFIT': summary_df['NET PROFIT'].sum()
         }
         
         summary_df = pd.concat([summary_df, pd.DataFrame([totals])], ignore_index=True)

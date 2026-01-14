@@ -54,19 +54,50 @@ class OrderAggregator:
         
         return aggregated
     
+    # def _aggregate_by_product(self, df: pd.DataFrame) -> pd.DataFrame:
+    #     """Aggregate sales by CMS product"""
+    #     # Group by CMS name and code
+    #     grouped = df.groupby(['Items sold', 'CMS code']).agg({
+    #         'Quantity': 'sum',
+    #         'Sold for': 'sum',
+    #         'Cost price': 'sum',
+    #         'NET PROFIT': 'sum',
+    #         'Month': lambda x: ', '.join(sorted(set(x)))  # List months where sold
+    #     }).reset_index()
+        
+    #     # Add average cost per unit for reference
+    #     grouped['Unit cost'] = grouped['Cost price'] / grouped['Quantity']
+        
+    #     # Sort by quantity descending
+    #     grouped = grouped.sort_values('Quantity', ascending=False)
+        
+    #     return grouped
+    
+    # In order_aggregator.py, update the _aggregate_by_product method:
+
     def _aggregate_by_product(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aggregate sales by CMS product"""
+        # Fill empty CMS codes with a placeholder
+        df['CMS code'] = df['CMS code'].fillna('NO_CODE')
+        
+        # Ensure numeric columns are actually numeric before grouping
+        numeric_columns = ['Quantity', 'Sold for', 'Cost price', 'NET PROFIT']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
         # Group by CMS name and code
         grouped = df.groupby(['Items sold', 'CMS code']).agg({
             'Quantity': 'sum',
             'Sold for': 'sum',
             'Cost price': 'sum',
             'NET PROFIT': 'sum',
-            'Month': lambda x: ', '.join(sorted(set(x)))  # List months where sold
+            'Month': lambda x: ', '.join(sorted(set(str(m) for m in x)))
         }).reset_index()
         
         # Add average cost per unit for reference
         grouped['Unit cost'] = grouped['Cost price'] / grouped['Quantity']
+        grouped['Unit cost'] = grouped['Unit cost'].fillna(0)
         
         # Sort by quantity descending
         grouped = grouped.sort_values('Quantity', ascending=False)
